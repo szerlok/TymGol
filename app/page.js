@@ -12,12 +12,20 @@ const RATINGS = {
   Chorwacja: 1, Croatia: 1, Meksyk: .96, Mexico: .96, "Stany Zjednoczone": .95, USA: .95,
   Kanada: .89, Canada: .89, Polska: .92, Poland: .92
 };
+const BRACKET_STAGES = [
+  { key: "round-of-32", label: "1/16 finału" },
+  { key: "round-of-16", label: "1/8 finału" },
+  { key: "quarterfinals", label: "Ćwierćfinały" },
+  { key: "semifinals", label: "Półfinały" },
+  { key: "final", label: "Finał" }
+];
 
 export default function Home() {
   const [matches, setMatches] = useState([]);
   const [meta, setMeta] = useState({ source: "—", updatedAt: null, notice: "" });
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [bracketStage, setBracketStage] = useState("round-of-32");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [homeTeam, setHomeTeam] = useState("");
@@ -28,7 +36,6 @@ export default function Home() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState("");
   const [oddsData, setOddsData] = useState(null);
-  const [now, setNow] = useState(Date.now());
 
   const loadData = useCallback(async (refresh = false) => {
     setLoading(true); setError("");
@@ -44,7 +51,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
 
   const teams = useMemo(() => [...new Set(matches.flatMap(match => [match.home.name, match.away.name]))].sort((a, b) => a.localeCompare(b, "pl")), [matches]);
   useEffect(() => {
@@ -57,8 +63,8 @@ export default function Home() {
   }), [matches, filter, search]);
   const finished = matches.filter(match => FINISHED.has(match.status));
   const upcoming = matches.filter(match => getCategory(match) === "upcoming");
-  const nextMatch = upcoming.find(match => new Date(match.date).getTime() > now);
-  const countdown = getCountdown(nextMatch?.date, now);
+  const groupProjections = useMemo(() => projectGroups(matches), [matches]);
+  const bracketMatches = matches.filter(match => match.stageKey === bracketStage);
 
   function runSimulation() {
     if (homeTeam && awayTeam && homeTeam !== awayTeam) setSimulation(predict(homeTeam, awayTeam, matches));
@@ -86,31 +92,14 @@ export default function Home() {
     <div className="noise" />
     <header className="topbar">
       <a className="brand" href="#"><span className="brand-mark">T</span><span>Tym<span>Gol</span></span></a>
-      <nav className="nav" aria-label="Główna nawigacja"><a className="active" href="#mecze">Mecze</a><a href="#symulacja">Symulacja</a><a href="#kupon">Kupon AI</a></nav>
+      <nav className="nav" aria-label="Główna nawigacja"><a className="active" href="#mecze">Mecze</a><a href="#drabinka">Drabinka</a><a href="#symulacja">Symulacja</a><a href="#kupon">Kupon AI</a></nav>
       <button className="refresh-button" onClick={() => loadData(true)} disabled={loading}><span className={loading ? "spinning" : ""}>↻</span> Odśwież</button>
     </header>
 
     <main>
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow"><span /> FIFA WORLD CUP 2026</p>
           <h1>Jasne, że wszystko<br /><em>się może zdarzyć.</em></h1>
-          <p className="hero-description">Tymek z Igorem obstawiają, analizują i mają nadzieję, że wygrają. A nawet jeśli piłka znowu zaskoczy — będzie dobrze.</p>
-          <div className="hero-actions"><a className="primary-button" href="#mecze">Zobacz mecze <span>↓</span></a><a className="ghost-button" href="#symulacja">Uruchom symulację</a></div>
-        </div>
-        <div className="hero-side">
-          <div className="hero-photo-card">
-            <img src="/tymek-igor.jpg" alt="Tymek i Igor — będzie dobrze" />
-            <div><span>TYMEK + IGOR</span><strong>Obstawiamy. Liczymy. Wierzymy.</strong></div>
-          </div>
-          <div className="countdown-card">
-            <div className="live-label"><span /> NAJBLIŻSZY MECZ</div>
-            <div className="countdown-teams">{nextMatch ? `${nextMatch.home.name} — ${nextMatch.away.name}` : "Brak kolejnych meczów"}</div>
-            <div className="countdown">
-              {[[countdown.days, "DNI"], [countdown.hours, "GODZ"], [countdown.minutes, "MIN"], [countdown.seconds, "SEK"]].map(([value, label], index) => <span className="countdown-part" key={label}><div><strong>{String(value).padStart(2, "0")}</strong><span>{label}</span></div>{index < 3 && <i>:</i>}</span>)}
-            </div>
-            <p>{nextMatch ? `${formatDateTime(nextMatch.date)} · ${nextMatch.venue}` : "Terminarz nie jest jeszcze dostępny."}</p>
-          </div>
         </div>
       </section>
 
@@ -119,6 +108,18 @@ export default function Home() {
         <div><span>Nadchodzące</span><strong>{upcoming.length}</strong></div>
         <div><span>Strzelone gole</span><strong>{finished.reduce((sum, match) => sum + (match.goals.home || 0) + (match.goals.away || 0), 0)}</strong></div>
         <div><span>Źródło danych</span><strong>{meta.source === "espn" ? "ESPN LIVE" : "—"}</strong></div>
+      </section>
+
+      <section className="section bracket-section" id="drabinka">
+        <div className="section-heading"><div><p className="eyebrow">DROGA DO FINAŁU</p><h2>Drabinka turnieju</h2></div><p>Aktualny skład i prognozy awansu</p></div>
+        <div className="bracket-tabs" role="tablist" aria-label="Fazy pucharowe">
+          {BRACKET_STAGES.map(stage => <button key={stage.key} className={bracketStage === stage.key ? "active" : ""} onClick={() => setBracketStage(stage.key)}>{stage.label}</button>)}
+        </div>
+        <div className="bracket-grid">
+          {bracketMatches.map((match, index) => <BracketMatch key={match.id} match={match} index={index} matches={matches} projections={groupProjections} />)}
+        </div>
+        {!bracketMatches.length && <div className="empty-state">ESPN nie opublikowało jeszcze par dla tej fazy.</div>}
+        <p className="bracket-legend"><span><i className="confirmed" /> Zakwalifikowany</span><span><i className="projected" /> Prognoza modelu</span><span><i /> Miejsce jeszcze nieustalone</span></p>
       </section>
 
       <section className="section" id="mecze">
@@ -183,9 +184,79 @@ function MatchCard({ match }) {
   </article>;
 }
 
+function BracketMatch({ match, index, projections }) {
+  const home = resolveBracketSlot(match.home, projections);
+  const away = resolveBracketSlot(match.away, projections);
+  return <article className="bracket-match">
+    <div className="bracket-match-top"><span>Mecz {index + 1}</span><time>{formatDateTime(match.date)}</time></div>
+    <BracketTeam slot={home} />
+    <div className="bracket-divider"><span>VS</span></div>
+    <BracketTeam slot={away} />
+    <p>◉ {match.venue}</p>
+  </article>;
+}
+
+function BracketTeam({ slot }) {
+  return <div className={`bracket-team ${slot.status}`}>
+    <span className="team-logo">{slot.logo ? <img src={slot.logo} alt="" loading="lazy" /> : slot.name.slice(0, 2).toUpperCase()}</span>
+    <div><strong>{slot.name}</strong><small>{slot.detail}</small></div>
+    <i />
+  </div>;
+}
+
 function TeamRow({ team, score }) { return <div className="team-row"><div className="team-name"><span className="team-logo">{team.logo ? <img src={team.logo} alt="" loading="lazy" /> : team.name.slice(0, 2).toUpperCase()}</span>{team.name}</div><span className="score">{score ?? "–"}</span></div>; }
 function TeamSelect({ label, value, onChange, teams }) { return <div className="team-select-block"><label>{label}</label><select value={value} onChange={event => onChange(event.target.value)}>{teams.map(team => <option key={team}>{team}</option>)}</select></div>; }
 function Probability({ label, value }) { return <div className="probability"><span>{label}</span><strong>{value == null ? "—" : percent(value)}</strong><div><i style={{ width: value == null ? 0 : percent(value) }} /></div></div>; }
+
+function projectGroups(matches) {
+  const groups = new Map();
+  const groupMatches = matches.filter(match => match.stageKey === "group-stage");
+
+  for (const match of groupMatches) {
+    const group = match.stage?.match(/Group\s+([A-L])/i)?.[1]?.toUpperCase();
+    if (!group) continue;
+    if (!groups.has(group)) groups.set(group, new Map());
+    const table = groups.get(group);
+    for (const team of [match.home, match.away]) {
+      if (!team.placeholder && !table.has(team.name)) table.set(team.name, { team, points: 0, goalsFor: 0, goalsAgainst: 0 });
+    }
+    if (!FINISHED.has(match.status)) continue;
+    const home = table.get(match.home.name), away = table.get(match.away.name);
+    if (!home || !away) continue;
+    home.goalsFor += match.goals.home || 0; home.goalsAgainst += match.goals.away || 0;
+    away.goalsFor += match.goals.away || 0; away.goalsAgainst += match.goals.home || 0;
+    if (match.goals.home > match.goals.away) home.points += 3;
+    else if (match.goals.home < match.goals.away) away.points += 3;
+    else { home.points += 1; away.points += 1; }
+  }
+
+  return Object.fromEntries([...groups.entries()].map(([group, table]) => [group, [...table.values()].sort((a, b) =>
+    b.points - a.points ||
+    (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst) ||
+    b.goalsFor - a.goalsFor ||
+    getRating(b.team.name, matches) - getRating(a.team.name, matches)
+  )]));
+}
+
+function resolveBracketSlot(team, projections) {
+  if (!team.placeholder) return { name: team.name, logo: team.logo, status: "confirmed", detail: "Zakwalifikowany" };
+
+  const group = team.name.match(/Group\s+([A-L])/i)?.[1]?.toUpperCase();
+  const rank = /winner/i.test(team.name) ? 0 : /runner-up|second/i.test(team.name) ? 1 : /third/i.test(team.name) ? 2 : null;
+  const projected = group && rank !== null ? projections[group]?.[rank] : null;
+  if (projected) return { name: projected.team.name, logo: projected.team.logo, status: "projected", detail: `Prognoza · grupa ${group}, miejsce ${rank + 1}` };
+
+  return { name: translatePlaceholder(team.name), logo: null, status: "pending", detail: "Jeszcze nieustalone" };
+}
+
+function translatePlaceholder(name) {
+  return name
+    .replace(/Round of 32\s*(\d+)?\s*Winner/i, (_, number) => `Zwycięzca ${number ? `meczu ${number} ` : ""}1/16 finału`)
+    .replace(/Round of 16\s*(\d+)?\s*Winner/i, (_, number) => `Zwycięzca ${number ? `meczu ${number} ` : ""}1/8 finału`)
+    .replace(/Quarterfinal\s*(\d+)?\s*Winner/i, (_, number) => `Zwycięzca ${number ? `ćwierćfinału ${number}` : "ćwierćfinału"}`)
+    .replace(/Semifinal\s*(\d+)?\s*Winner/i, (_, number) => `Zwycięzca ${number ? `półfinału ${number}` : "półfinału"}`)
+    .replace(/Semifinal\s*(\d+)?\s*Loser/i, (_, number) => `Przegrany ${number ? `półfinału ${number}` : "półfinału"}`);
+}
 
 function buildCoupon(events, mode, matches, quota) {
   const candidates = createBetCandidates(events, matches);
@@ -295,7 +366,6 @@ function getRating(team, matches) {
 }
 
 function getCategory(match) { return LIVE.has(match.status) ? "live" : FINISHED.has(match.status) ? "finished" : "upcoming"; }
-function getCountdown(date, now) { const distance = date ? Math.max(0, new Date(date).getTime() - now) : 0; return { days: Math.floor(distance / 86400000), hours: Math.floor(distance / 3600000) % 24, minutes: Math.floor(distance / 60000) % 60, seconds: Math.floor(distance / 1000) % 60 }; }
 function poisson(goals, expected) { return Math.exp(-expected) * expected ** goals / factorial(goals); }
 function factorial(value) { let result = 1; for (let index = 2; index <= value; index++) result *= index; return result; }
 function clamp(value, min, max) { return Math.min(Math.max(value, min), max); }

@@ -41,13 +41,15 @@ function normalizeEvent(event) {
   if (!home || !away) return null;
 
   const status = competition.status || event.status;
+  const stageKey = event.season?.slug || "unknown";
   return {
     id: event.id,
     date: competition.date || event.date,
     timestamp: Math.floor(new Date(competition.date || event.date).getTime() / 1000),
     status: normalizeStatus(status),
     elapsed: status?.type?.state === "in" ? Math.floor((status.clock || 0) / 60) : null,
-    stage: competition.altGameNote || formatStage(event.season?.slug),
+    stage: stageKey === "group-stage" ? competition.altGameNote || "Faza grupowa" : formatStage(stageKey),
+    stageKey,
     venue: competition.venue?.fullName || event.venue?.displayName || "Do ustalenia",
     home: normalizeTeam(home),
     away: normalizeTeam(away),
@@ -62,7 +64,8 @@ function normalizeTeam(competitor) {
   return {
     id: competitor.team.id,
     name: competitor.team.displayName || competitor.team.name,
-    logo: competitor.team.logo || null
+    logo: competitor.team.logo || null,
+    placeholder: competitor.team.isActive === false
   };
 }
 
