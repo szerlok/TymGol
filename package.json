@@ -1,0 +1,20 @@
+{
+  "name": "tymgol",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Panel wyników, symulacji i analiz MŚ 2026",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^16.2.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
