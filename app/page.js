@@ -19,12 +19,18 @@ const BRACKET_STAGES = [
   { key: "semifinals", label: "Półfinały" },
   { key: "final", label: "Finał" }
 ];
+const GROUPS = "ABCDEFGHIJKL".split("");
+const NAV_ITEMS = [
+  ["mecze", "Mecze"], ["grupy", "Grupy"], ["drabinka", "Drabinka"], ["symulacja", "Symulacja"], ["kupon", "Kupon AI"]
+];
 
 export default function Home() {
   const [matches, setMatches] = useState([]);
   const [meta, setMeta] = useState({ source: "—", updatedAt: null, notice: "" });
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [activeSection, setActiveSection] = useState("mecze");
+  const [selectedGroup, setSelectedGroup] = useState("A");
   const [bracketStage, setBracketStage] = useState("round-of-32");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,6 +57,14 @@ export default function Home() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible?.target.id) setActiveSection(visible.target.id);
+    }, { rootMargin: "-20% 0px -65%", threshold: [0, .1, .25] });
+    document.querySelectorAll("main section[id]").forEach(section => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
 
   const teams = useMemo(() => [...new Set(matches.flatMap(match => [match.home.name, match.away.name]))].sort((a, b) => a.localeCompare(b, "pl")), [matches]);
   useEffect(() => {
@@ -64,6 +78,7 @@ export default function Home() {
   const finished = matches.filter(match => FINISHED.has(match.status));
   const upcoming = matches.filter(match => getCategory(match) === "upcoming");
   const groupProjections = useMemo(() => projectGroups(matches), [matches]);
+  const selectedGroupMatches = matches.filter(match => getGroupKey(match) === selectedGroup);
   const bracketMatches = matches.filter(match => match.stageKey === bracketStage);
 
   function runSimulation() {
@@ -92,7 +107,7 @@ export default function Home() {
     <div className="noise" />
     <header className="topbar">
       <a className="brand" href="#"><span className="brand-mark">T</span><span>Tym<span>Gol</span></span></a>
-      <nav className="nav" aria-label="Główna nawigacja"><a className="active" href="#mecze">Mecze</a><a href="#drabinka">Drabinka</a><a href="#symulacja">Symulacja</a><a href="#kupon">Kupon AI</a></nav>
+      <nav className="nav" aria-label="Główna nawigacja">{NAV_ITEMS.map(([id, label]) => <a key={id} className={activeSection === id ? "active" : ""} href={`#${id}`}>{label}</a>)}</nav>
       <button className="refresh-button" onClick={() => loadData(true)} disabled={loading}><span className={loading ? "spinning" : ""}>↻</span> Odśwież</button>
     </header>
 
@@ -108,6 +123,14 @@ export default function Home() {
         <div><span>Nadchodzące</span><strong>{upcoming.length}</strong></div>
         <div><span>Strzelone gole</span><strong>{finished.reduce((sum, match) => sum + (match.goals.home || 0) + (match.goals.away || 0), 0)}</strong></div>
         <div><span>Źródło danych</span><strong>{meta.source === "espn" ? "ESPN LIVE" : "—"}</strong></div>
+      </section>
+
+      <section className="section groups-section" id="grupy">
+        <div className="section-heading"><div><p className="eyebrow">FAZA GRUPOWA</p><h2>Grupy i tabele</h2></div><p>Punkty, bilans i wszystkie spotkania</p></div>
+        <div className="group-tabs" role="tablist" aria-label="Wybór grupy">
+          {GROUPS.map(group => <button key={group} className={selectedGroup === group ? "active" : ""} onClick={() => setSelectedGroup(group)}>Grupa {group}</button>)}
+        </div>
+        <GroupView group={selectedGroup} table={groupProjections[selectedGroup] || []} matches={selectedGroupMatches} />
       </section>
 
       <section className="section bracket-section" id="drabinka">
@@ -184,6 +207,42 @@ function MatchCard({ match }) {
   </article>;
 }
 
+function GroupView({ group, table, matches }) {
+  return <div className="group-view">
+    <div className="group-table-card">
+      <div className="group-card-heading"><div><span>GRUPA {group}</span><strong>Tabela</strong></div><small>Aktualizowana na żywo</small></div>
+      <div className="group-table-scroll">
+        <table className="group-table">
+          <thead><tr><th>#</th><th>Drużyna</th><th>M</th><th>Z</th><th>R</th><th>P</th><th>Bramki</th><th>+/-</th><th>PKT</th></tr></thead>
+          <tbody>{table.map((entry, index) => <tr key={entry.team.id} className={index < 2 ? "promotion" : index === 2 ? "playoff" : ""}>
+            <td><span className="position">{index + 1}</span></td>
+            <td><span className="group-team"><span className="team-logo">{entry.team.logo ? <img src={entry.team.logo} alt="" loading="lazy" /> : entry.team.name.slice(0, 2)}</span><strong>{entry.team.name}</strong></span></td>
+            <td>{entry.played}</td><td>{entry.wins}</td><td>{entry.draws}</td><td>{entry.losses}</td>
+            <td>{entry.goalsFor}:{entry.goalsAgainst}</td><td>{formatGoalDifference(entry.goalsFor - entry.goalsAgainst)}</td><td><strong>{entry.points}</strong></td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      {!table.length && <div className="empty-state">Brak danych tabeli dla tej grupy.</div>}
+      <div className="group-table-legend"><span><i /> Bezpośredni awans</span><span><i /> Możliwy awans z 3. miejsca</span></div>
+    </div>
+    <div className="group-fixtures-card">
+      <div className="group-card-heading"><div><span>GRUPA {group}</span><strong>Mecze</strong></div><small>{matches.length} spotkań</small></div>
+      <div className="group-fixtures">{matches.map(match => <GroupFixture key={match.id} match={match} />)}</div>
+      {!matches.length && <div className="empty-state">Brak opublikowanych spotkań.</div>}
+    </div>
+  </div>;
+}
+
+function GroupFixture({ match }) {
+  const category = getCategory(match);
+  const played = category !== "upcoming";
+  return <div className="group-fixture">
+    <div className="group-fixture-meta"><time>{shortDate(match.date)}</time><span className={category}>{category === "finished" ? "Koniec" : category === "live" ? "Na żywo" : "Zaplanowany"}</span></div>
+    <div><span>{match.home.name}</span><strong>{played ? match.goals.home ?? "–" : "–"}</strong></div>
+    <div><span>{match.away.name}</span><strong>{played ? match.goals.away ?? "–" : "–"}</strong></div>
+  </div>;
+}
+
 function BracketMatch({ match, index, projections }) {
   const home = resolveBracketSlot(match.home, projections);
   const away = resolveBracketSlot(match.away, projections);
@@ -218,16 +277,17 @@ function projectGroups(matches) {
     if (!groups.has(group)) groups.set(group, new Map());
     const table = groups.get(group);
     for (const team of [match.home, match.away]) {
-      if (!team.placeholder && !table.has(team.name)) table.set(team.name, { team, points: 0, goalsFor: 0, goalsAgainst: 0 });
+      if (!team.placeholder && !table.has(team.name)) table.set(team.name, { team, played: 0, wins: 0, draws: 0, losses: 0, points: 0, goalsFor: 0, goalsAgainst: 0 });
     }
     if (!FINISHED.has(match.status)) continue;
     const home = table.get(match.home.name), away = table.get(match.away.name);
     if (!home || !away) continue;
+    home.played += 1; away.played += 1;
     home.goalsFor += match.goals.home || 0; home.goalsAgainst += match.goals.away || 0;
     away.goalsFor += match.goals.away || 0; away.goalsAgainst += match.goals.home || 0;
-    if (match.goals.home > match.goals.away) home.points += 3;
-    else if (match.goals.home < match.goals.away) away.points += 3;
-    else { home.points += 1; away.points += 1; }
+    if (match.goals.home > match.goals.away) { home.wins += 1; away.losses += 1; home.points += 3; }
+    else if (match.goals.home < match.goals.away) { away.wins += 1; home.losses += 1; away.points += 3; }
+    else { home.draws += 1; away.draws += 1; home.points += 1; away.points += 1; }
   }
 
   return Object.fromEntries([...groups.entries()].map(([group, table]) => [group, [...table.values()].sort((a, b) =>
@@ -366,6 +426,8 @@ function getRating(team, matches) {
 }
 
 function getCategory(match) { return LIVE.has(match.status) ? "live" : FINISHED.has(match.status) ? "finished" : "upcoming"; }
+function getGroupKey(match) { return match.stageKey === "group-stage" ? match.stage?.match(/Group\s+([A-L])/i)?.[1]?.toUpperCase() || null : null; }
+function formatGoalDifference(value) { return value > 0 ? `+${value}` : String(value); }
 function poisson(goals, expected) { return Math.exp(-expected) * expected ** goals / factorial(goals); }
 function factorial(value) { let result = 1; for (let index = 2; index <= value; index++) result *= index; return result; }
 function clamp(value, min, max) { return Math.min(Math.max(value, min), max); }
